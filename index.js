@@ -49,7 +49,7 @@ module.exports = function(opt, execFile_opt) {
     return args;
   };
 
-  var buildFlag = function(flag, value){
+  var buildFlag = function(flag, value) {
     return '--' + flag + (value === null ? '' : '=' + value)
   };
 
@@ -62,9 +62,10 @@ module.exports = function(opt, execFile_opt) {
     files.push(file);
   }
 
-  function hasModules(){
+  function hasModules() {
     var properties = Object.getOwnPropertyNames(opt.compilerFlags || {});
-    return properties.indexOf("module") && properties.indexOf("module_output_path_prefix");
+    return properties.indexOf("module") >= 0 &&
+        properties.indexOf("module_output_path_prefix") >= 0;
   }
 
 
@@ -77,7 +78,7 @@ module.exports = function(opt, execFile_opt) {
       args = [
         '-jar',
         // For faster compilation. It's supported everywhere from Java 1.7+.
-        '-XX:+TieredCompilation',
+        // '-XX:+TieredCompilation',
         opt.compilerPath,
         // To prevent maximum length of command line string exceeded error.
         '--flagfile="' + getFlagFilePath(files) + '"'
@@ -94,7 +95,9 @@ module.exports = function(opt, execFile_opt) {
     args = javaFlags.concat(args);
 
     // Force --js_output_file to prevent [Error: stdout maxBuffer exceeded.]
-    args.push('--js_output_file="' + opt.fileName + '"');
+    if (opt.fileName) {
+      args.push('--js_output_file="' + opt.fileName + '"');
+    }
 
     // Create directory for output file if it doesn't exist.
     if (opt.fileName && !fs.existsSync(path.dirname(opt.fileName))) {
@@ -113,25 +116,30 @@ module.exports = function(opt, execFile_opt) {
         gutil.log(stderr);
       }
 
-      var outputFileSrc = fs.readFile(opt.fileName, function(err, data) {
-        if (err) {
-          this.emit('error', new gutil.PluginError(PLUGIN_NAME, err));
-          return;
-        }
+      if (opt.fileName) {
+        var outputFileSrc = fs.readFile(opt.fileName, function(err, data) {
+          if (err) {
+            this.emit('error', new gutil.PluginError(PLUGIN_NAME, err));
+            return;
+          }
 
-        if(opt.fileName){
-          var outputFile = new gutil.File({
-            base: firstFile.base,
-            contents: new Buffer(data),
-            cwd: firstFile.cwd,
-            path: path.join(firstFile.base, opt.fileName)
-          });
+          if(opt.fileName){
+            var outputFile = new gutil.File({
+              base: firstFile.base,
+              contents: new Buffer(data),
+              cwd: firstFile.cwd,
+              path: path.join(firstFile.base, opt.fileName)
+            });
 
-         this.emit('data', outputFile);
-         fs.unlinkSync(opt.fileName);
-        }
+           this.emit('data', outputFile);
+           fs.unlinkSync(opt.fileName);
+          }
+          this.emit('end');
+        }.bind(this));
+      } else if (hasModules()) {
+        // TODO: Push compiler generated module files to downstream.
         this.emit('end');
-      }.bind(this));
+      }
 
     }.bind(this));
   }
